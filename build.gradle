@@ -1,0 +1,73 @@
+plugins {
+    id 'java'
+}
+
+group = 'org.plume'
+description = 'Kafka consumer wrapper'
+version = '0.0.1'
+
+// Sets Java version.
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    }
+}
+
+wrapper {
+    gradleVersion = '9.2'
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    mockitoAgent {
+        transitive = false
+    }
+}
+
+// ------- Versions ------- //
+
+def kafkaVersion = '4.2.0'
+def slf4jVersion = '2.0.17'
+def log4j2Version = '2.25.2'
+def junitVersion = '6.0.0'
+def assertjVersion = '3.27.7'
+def mockitoVersion = '5.23.0'
+def testcontainersVersion = '2.0.5'
+def awaitilityVersion = '4.3.0'
+
+// ------------------------ //
+
+dependencies {
+    // --------- Kafka --------- //
+    implementation "org.apache.kafka:kafka-clients:$kafkaVersion"
+
+    // --------- Logging --------- //
+    implementation "org.slf4j:slf4j-api:$slf4jVersion"
+    runtimeOnly "org.apache.logging.log4j:log4j-slf4j2-impl:$log4j2Version"
+
+    // ------- Unit testing ------ //
+    testImplementation platform("org.junit:junit-bom:$junitVersion")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+
+    testImplementation "org.assertj:assertj-core:$assertjVersion"
+
+    testImplementation "org.mockito:mockito-junit-jupiter:$mockitoVersion"
+    mockitoAgent "org.mockito:mockito-core:$mockitoVersion"
+
+    // --- Integration testing --- //
+    testImplementation "org.testcontainers:testcontainers-kafka:$testcontainersVersion"
+    testImplementation "org.testcontainers:testcontainers-junit-jupiter:$testcontainersVersion"
+
+    testImplementation "org.apache.kafka:kafka-clients:$kafkaVersion"
+
+    testImplementation "org.awaitility:awaitility:$awaitilityVersion"
+}
+
+test {
+    useJUnitPlatform()
+    jvmArgs "-javaagent:${configurations.mockitoAgent.asPath}"
+}
