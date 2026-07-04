@@ -5,6 +5,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.header.Headers;
+import org.plume.lifecycle.ShutdownManager;
+import org.plume.lifecycle.StartupManager;
 import org.slf4j.Logger;
 
 import java.time.Duration;
@@ -17,19 +19,36 @@ import java.util.function.BiConsumer;
 import static java.util.Objects.requireNonNull;
 import static org.slf4j.LoggerFactory.getLogger;
 
-public class EventConsumer {
+public class EventConsumer implements Runnable {
 
     private static final Logger LOGGER = getLogger(EventConsumer.class);
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
+    private final List<String> topics;
+    private final BiConsumer<Headers, String> consumerFunction;
+    private final StartupManager startupManager;
+    private final ShutdownManager shutdownManager;
+
     private KafkaConsumer<String, String> kafkaConsumer;
 
 
-    public EventConsumer(Map<?, ?> properties) {
-        LOGGER.info("Setting up consumer...");
+    public EventConsumer(Map<?, ?> properties,
+                         List<String> topics,
+                         BiConsumer<Headers,String> consumerFunction,
+                         StartupManager startupManager,
+                         ShutdownManager shutdownManager
+                         ) {
+        LOGGER.info("Initializing consumer...");
 
         requireNonNull(properties, "Properties cannot be null");
+        requireNonNull(topics, "Topics cannot be null");
+        requireNonNull(consumerFunction, "Consumer function cannot be null");
+
+        this.topics = topics;
+        this.consumerFunction = consumerFunction;
+        this.startupManager = startupManager;
+        this.shutdownManager = shutdownManager;
 
         setupConsumer(properties);
     }
@@ -40,24 +59,37 @@ public class EventConsumer {
         config.putAll(properties);
 
         this.kafkaConsumer = new KafkaConsumer<>(config);
+        addStartupHook();
         addShutdownHook();
     }
 
     /**
-     * Registers a simple shutdown hook that will stop the consumer.
-     * Avoid joining the main / test thread here because joining threads from within the shutdown hook can deadlock the JVM shutdown
-     * (the hook runs concurrently with other non-daemon threads).
+     * Adds delaying startup hook if any.
      */
-    private void addShutdownHook() {
-        Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
+    private void addStartupHook() {
+        if (startupManager != null) {
+            startupManager.registerStartupHook(this);
+        }
     }
 
-    public void run(List<String> topics, BiConsumer<Headers, String> consumerFunction) {
+    /**
+     * Adds provided hook or registers a default one that will stop the consumer.
+     */
+    private void addShutdownHook() {
+        if (shutdownManager == null) {
+            // Registers default shutdown hook.
+            Runtime.getRuntime().addShutdownHook(new Thread(this::stop));
+        } else {
+            // Registers provided hook.
+            shutdownManager.registerShutdownHook(this);
+        }
+    }
 
-        requireNonNull(topics, "Topics cannot be null");
-        requireNonNull(consumerFunction, "Consumer function cannot be null");
-
-        // Polls into a separate thread to not block main thread on infinite loop.
+    /**
+     * Polls into a separate thread to not block main thread on infinite loop.
+     */
+    @Override
+    public void run() {
         new Thread(() -> {
             try {
                 kafkaConsumer.subscribe(topics);

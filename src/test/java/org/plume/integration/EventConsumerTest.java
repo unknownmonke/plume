@@ -26,12 +26,17 @@ public class EventConsumerTest extends AbstractIT {
         Properties properties = TestConsumerProperties.getProperties(kafkaContainer.getBootstrapServers());
         properties.put(ConsumerConfig.GROUP_ID_CONFIG, "test-eventconsumer-group");
 
-        EventConsumer eventConsumer = new EventConsumer(properties);
+        EventConsumer eventConsumer = new EventConsumer(
+            properties,
+            List.of(TOPIC),
+            (_, value) -> values.add(value),
+            null,
+            null
+            );
 
         producer.send(new ProducerRecord<>(TOPIC, "key", "value")).get();
 
-        eventConsumer.run(List.of(TOPIC),
-            (headers, value) -> values.add(value));
+        eventConsumer.run();
 
         Awaitility
             .await()
