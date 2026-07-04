@@ -1,5 +1,6 @@
 package org.plume;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -7,7 +8,6 @@ import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.header.Headers;
 import org.plume.lifecycle.ShutdownManager;
 import org.plume.lifecycle.StartupManager;
-import org.slf4j.Logger;
 
 import java.time.Duration;
 import java.util.List;
@@ -17,11 +17,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
 import static java.util.Objects.requireNonNull;
-import static org.slf4j.LoggerFactory.getLogger;
 
+@Slf4j
 public class EventConsumer implements Runnable {
-
-    private static final Logger LOGGER = getLogger(EventConsumer.class);
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
@@ -39,7 +37,7 @@ public class EventConsumer implements Runnable {
                          StartupManager startupManager,
                          ShutdownManager shutdownManager
                          ) {
-        LOGGER.info("Initializing consumer...");
+        log.info("Initializing consumer...");
 
         requireNonNull(properties, "Properties cannot be null");
         requireNonNull(topics, "Topics cannot be null");
@@ -94,7 +92,7 @@ public class EventConsumer implements Runnable {
             try {
                 kafkaConsumer.subscribe(topics);
 
-                LOGGER.info("Subscribed to topics : {}", topics);
+                log.info("Subscribed to topics : {}", topics);
 
                 while (!closed.get()) {
                     ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofMillis(100));
@@ -108,11 +106,11 @@ public class EventConsumer implements Runnable {
                 if (!closed.get()) throw e;
 
             } catch (Exception e) {
-                LOGGER.error("Error in consumer thread.", e);
+                log.error("Error in consumer thread.", e);
 
             } finally {
                 kafkaConsumer.close();
-                LOGGER.info("Consumer stopped.");
+                log.info("Consumer stopped.");
             }
         }).start();
     }
