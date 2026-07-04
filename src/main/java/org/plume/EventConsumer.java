@@ -1,5 +1,6 @@
 package org.plume;
 
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -16,13 +17,12 @@ import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
-import static java.util.Objects.requireNonNull;
-
 @Slf4j
 public class EventConsumer implements Runnable {
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
+    private final Map<?, ?> properties;
     private final List<String> topics;
     private final BiConsumer<Headers, String> consumerFunction;
     private final StartupManager startupManager;
@@ -31,28 +31,25 @@ public class EventConsumer implements Runnable {
     private KafkaConsumer<String, String> kafkaConsumer;
 
 
-    public EventConsumer(Map<?, ?> properties,
-                         List<String> topics,
-                         BiConsumer<Headers,String> consumerFunction,
+    public EventConsumer(@NonNull Map<?, ?> properties,
+                         @NonNull List<String> topics,
+                         @NonNull BiConsumer<Headers,String> consumerFunction,
                          StartupManager startupManager,
                          ShutdownManager shutdownManager
                          ) {
         log.info("Initializing consumer...");
 
-        requireNonNull(properties, "Properties cannot be null");
-        requireNonNull(topics, "Topics cannot be null");
-        requireNonNull(consumerFunction, "Consumer function cannot be null");
-
+        this.properties = properties;
         this.topics = topics;
         this.consumerFunction = consumerFunction;
         this.startupManager = startupManager;
         this.shutdownManager = shutdownManager;
 
-        setupConsumer(properties);
+        setupConsumer();
     }
 
 
-    private void setupConsumer(Map<?, ?> properties) {
+    private void setupConsumer() {
         Properties config = new Properties();
         config.putAll(properties);
 
