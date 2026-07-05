@@ -7,6 +7,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.plume.event.Event;
 import org.plume.integration.config.TestClusterConfig;
 import org.plume.integration.config.TestConsumerProperties;
 import org.plume.integration.config.TestProducerProperties;
@@ -26,8 +27,8 @@ public abstract class AbstractIT {
 
     protected static final String TOPIC = "test-topic";
 
-    protected KafkaProducer<String, String> producer;
-    protected KafkaConsumer<String, String> consumer;
+    protected KafkaProducer<String, Event> producer;
+    protected KafkaConsumer<String, Event> consumer;
     protected AdminClient adminClient;
 
     @Container

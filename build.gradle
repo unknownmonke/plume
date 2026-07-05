@@ -31,6 +31,7 @@ configurations {
 // ------- Versions ------- //
 
 def kafkaVersion = '4.2.0'
+def jacksonVersion = '3.2.0'
 def slf4jVersion = '2.0.17'
 def log4j2Version = '2.25.2'
 def junitVersion = '6.0.0'
@@ -44,6 +45,9 @@ def awaitilityVersion = '4.3.0'
 dependencies {
     // --------- Kafka --------- //
     implementation "org.apache.kafka:kafka-clients:$kafkaVersion"
+
+    // --------- JSON ---------- //
+    implementation "tools.jackson.core:jackson-databind:$jacksonVersion"
 
     // --------- Logging --------- //
     implementation "org.slf4j:slf4j-api:$slf4jVersion"

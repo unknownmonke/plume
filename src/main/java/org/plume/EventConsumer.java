@@ -7,6 +7,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.header.Headers;
+import org.plume.event.Event;
 import org.plume.lifecycle.ShutdownManager;
 import org.plume.lifecycle.StartupManager;
 
@@ -24,16 +25,16 @@ public class EventConsumer implements Runnable {
 
     private final Map<?, ?> properties;
     private final List<String> topics;
-    private final BiConsumer<Headers, String> consumerFunction;
+    private final BiConsumer<Headers, Event> consumerFunction;
     private final StartupManager startupManager;
     private final ShutdownManager shutdownManager;
 
-    private KafkaConsumer<String, String> kafkaConsumer;
+    private KafkaConsumer<String, Event> kafkaConsumer;
 
 
     public EventConsumer(@NonNull Map<?, ?> properties,
                          @NonNull List<String> topics,
-                         @NonNull BiConsumer<Headers,String> consumerFunction,
+                         @NonNull BiConsumer<Headers, Event> consumerFunction,
                          StartupManager startupManager,
                          ShutdownManager shutdownManager
                          ) {
@@ -92,9 +93,9 @@ public class EventConsumer implements Runnable {
                 log.info("Subscribed to topics : {}", topics);
 
                 while (!closed.get()) {
-                    ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofMillis(100));
+                    ConsumerRecords<String, Event> records = kafkaConsumer.poll(Duration.ofMillis(100));
 
-                    for (ConsumerRecord<String, String> record : records) {
+                    for (ConsumerRecord<String, Event> record : records) {
                         consumerFunction.accept(record.headers(), record.value());
                     }
                 }
