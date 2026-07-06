@@ -1,10 +1,10 @@
-package org.plume.integration;
+package org.plume.integration.consumer;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
-import org.plume.EventConsumer;
+import org.plume.consumer.EventConsumer;
 import org.plume.event.Event;
 import org.plume.integration.common.AbstractIT;
 import org.plume.integration.config.TestConsumerProperties;

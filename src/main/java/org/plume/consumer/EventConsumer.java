@@ -1,4 +1,4 @@
-package org.plume;
+package org.plume.consumer;
 
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +37,7 @@ public class EventConsumer implements Runnable {
                          @NonNull BiConsumer<Headers, Event> consumerFunction,
                          StartupManager startupManager,
                          ShutdownManager shutdownManager
-                         ) {
+    ) {
         log.info("Initializing consumer...");
 
         this.properties = properties;

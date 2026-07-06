@@ -24,13 +24,13 @@ public class SetupHealthTest extends AbstractIT {
         producer.send(new ProducerRecord<>(TOPIC, "key", buildTestEvent())).get();
 
         // Verifies consumer is up.
-        consumer.subscribe(Collections.singletonList("test-topic"));
+        consumer.subscribe(Collections.singletonList(TOPIC));
 
         ConsumerRecords<String, Event> records = consumer.poll(Duration.ofSeconds(5));
         assert records.count() > 0;
 
         // Verifies admin client is up.
         Set<String> topics = adminClient.listTopics().names().get();
-        assert topics.contains("test-topic");
+        assert topics.contains(TOPIC);
     }
 }
