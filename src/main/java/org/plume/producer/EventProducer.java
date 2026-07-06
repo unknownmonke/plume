@@ -9,6 +9,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.header.Header;
 import org.plume.event.Event;
 import org.plume.lifecycle.ShutdownManager;
+import org.plume.security.Security;
 
 import java.util.List;
 import java.util.Map;
@@ -20,16 +21,20 @@ import java.util.concurrent.Future;
 public class EventProducer {
 
     private final Map<?, ?> properties;
+    private final Security security;
     private final ShutdownManager shutdownManager;
 
     private KafkaProducer<String, Event> kafkaProducer;
     private ProducerRecordBuilder producerRecordBuilder;
 
 
-    public EventProducer(@NonNull Map<?, ?> properties, ShutdownManager shutdownManager) {
+    public EventProducer(@NonNull Map<?, ?> properties,
+                         @NonNull Security security,
+                         ShutdownManager shutdownManager) {
         log.info("Initializing producer...");
 
         this.properties = properties;
+        this.security = security;
         this.shutdownManager = shutdownManager;
 
         setupProducer();
@@ -37,12 +42,22 @@ public class EventProducer {
 
 
     private void setupProducer() {
-        Properties config = new Properties();
-        config.putAll(properties);
-
         this.producerRecordBuilder = new ProducerRecordBuilder();
-        this.kafkaProducer = new KafkaProducer<>(config);
+        this.kafkaProducer = new KafkaProducer<>(buildConfig());
         addShutdownHook();
+    }
+
+    private Properties buildConfig() {
+        Properties config = new Properties();
+
+        // Applies security configuration.
+        security.securityConfig();
+
+        // Registers supplied custom properties.
+        if (properties != null) {
+            config.putAll(properties);
+        }
+        return config;
     }
 
     /**

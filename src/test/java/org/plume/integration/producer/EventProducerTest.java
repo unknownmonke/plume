@@ -6,6 +6,7 @@ import org.plume.event.Event;
 import org.plume.integration.common.AbstractIT;
 import org.plume.integration.config.TestProducerProperties;
 import org.plume.producer.EventProducer;
+import org.plume.security.PlainTextSecurity;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -20,7 +21,7 @@ public class EventProducerTest extends AbstractIT {
     void producer_should_publish_event() throws ExecutionException, InterruptedException {
         Properties properties = TestProducerProperties.getProperties(kafkaContainer.getBootstrapServers());
 
-        EventProducer eventProducer = new EventProducer(properties, null);
+        EventProducer eventProducer = new EventProducer(properties, new PlainTextSecurity(), null);
 
         eventProducer.publish(TOPIC, "key", buildTestEvent()).get();
 

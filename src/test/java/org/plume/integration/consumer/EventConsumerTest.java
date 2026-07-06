@@ -8,6 +8,7 @@ import org.plume.consumer.EventConsumer;
 import org.plume.event.Event;
 import org.plume.integration.common.AbstractIT;
 import org.plume.integration.config.TestConsumerProperties;
+import org.plume.security.PlainTextSecurity;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ public class EventConsumerTest extends AbstractIT {
             properties,
             List.of(TOPIC),
             (_, value) -> values.add(value),
+            new PlainTextSecurity(),
             null,
             null
             );

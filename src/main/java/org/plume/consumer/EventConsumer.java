@@ -10,6 +10,7 @@ import org.apache.kafka.common.header.Headers;
 import org.plume.event.Event;
 import org.plume.lifecycle.ShutdownManager;
 import org.plume.lifecycle.StartupManager;
+import org.plume.security.Security;
 
 import java.time.Duration;
 import java.util.List;
@@ -26,6 +27,7 @@ public class EventConsumer implements Runnable {
     private final Map<?, ?> properties;
     private final List<String> topics;
     private final BiConsumer<Headers, Event> consumerFunction;
+    private final Security security;
     private final StartupManager startupManager;
     private final ShutdownManager shutdownManager;
 
@@ -35,6 +37,7 @@ public class EventConsumer implements Runnable {
     public EventConsumer(@NonNull Map<?, ?> properties,
                          @NonNull List<String> topics,
                          @NonNull BiConsumer<Headers, Event> consumerFunction,
+                         @NonNull Security security,
                          StartupManager startupManager,
                          ShutdownManager shutdownManager
     ) {
@@ -43,6 +46,7 @@ public class EventConsumer implements Runnable {
         this.properties = properties;
         this.topics = topics;
         this.consumerFunction = consumerFunction;
+        this.security = security;
         this.startupManager = startupManager;
         this.shutdownManager = shutdownManager;
 
@@ -51,12 +55,22 @@ public class EventConsumer implements Runnable {
 
 
     private void setupConsumer() {
-        Properties config = new Properties();
-        config.putAll(properties);
-
-        this.kafkaConsumer = new KafkaConsumer<>(config);
+        this.kafkaConsumer = new KafkaConsumer<>(buildConfig());
         addStartupHook();
         addShutdownHook();
+    }
+
+    private Properties buildConfig() {
+        Properties config = new Properties();
+
+        // Applies security configuration.
+        security.securityConfig();
+
+        // Registers supplied custom properties.
+        if (properties != null) {
+            config.putAll(properties);
+        }
+        return config;
     }
 
     /**
