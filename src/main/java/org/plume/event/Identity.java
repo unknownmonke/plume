@@ -4,4 +4,9 @@ import lombok.NonNull;
 
 import java.io.Serializable;
 
-public record Identity(@NonNull String identifier, String authentication) implements Serializable {}
+public record Identity(@NonNull String identifier, String authentication) implements Serializable {
+
+    public Identity(String identifier) {
+        this(identifier, null);
+    }
+}

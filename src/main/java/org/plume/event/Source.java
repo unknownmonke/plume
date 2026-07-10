@@ -1,6 +1,5 @@
 package org.plume.event;
 
-import lombok.Builder;
 import lombok.NonNull;
 
 import java.io.Serializable;
@@ -14,9 +13,13 @@ import java.io.Serializable;
  * @param domain Functional domain of the sending service.
  * @param component Specific service component (optional).
  */
-@Builder
 public record Source(
     @NonNull String app,
     @NonNull String domain,
     String component
-) implements Serializable {}
+) implements Serializable {
+
+    public Source(String app, String domain) {
+        this(app, domain, null);
+    }
+}

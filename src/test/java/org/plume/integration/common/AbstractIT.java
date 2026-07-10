@@ -19,7 +19,6 @@ import org.testcontainers.kafka.KafkaContainer;
 import java.time.Duration;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 @Testcontainers
@@ -39,7 +38,7 @@ public abstract class AbstractIT {
 
 
     @BeforeEach
-    void setup() throws ExecutionException, InterruptedException {
+    void setup() {
         setupClients();
         createTestTopic();
     }
@@ -59,12 +58,17 @@ public abstract class AbstractIT {
         adminClient = AdminClient.create(adminProps);
     }
 
-    private void createTestTopic() throws ExecutionException, InterruptedException {
-        Set<String> topics = adminClient.listTopics().names().get();
+    private void createTestTopic() {
+        createTopic(TOPIC, 1, (short) 1);
+    }
 
-        if (!topics.contains(TOPIC)) {
-            NewTopic topic = new NewTopic(TOPIC, 1, (short) 1);
+    public void createTopic(String name, int partitions, short replicationFactor) {
+        try {
+            NewTopic topic = new NewTopic(name, partitions, replicationFactor);
             adminClient.createTopics(List.of(topic)).all().get();
+
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException("Error creating topics", e);
         }
     }
 }

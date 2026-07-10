@@ -1,22 +1,27 @@
 package org.plume.integration.consumer;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
+import org.plume.consumer.ConsumerBootstrap;
 import org.plume.consumer.EventConsumer;
 import org.plume.event.Event;
+import org.plume.idempotency.InMemoryIdempotencyKeyStore;
 import org.plume.integration.common.AbstractIT;
-import org.plume.integration.config.TestConsumerProperties;
+import org.plume.producer.EventProducer;
+import org.plume.producer.ProducerBootstrap;
 import org.plume.security.PlainTextSecurity;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.plume.common.Constants.getDlqTopic;
 import static org.plume.event.TestEventFactory.buildTestEvent;
 
 public class EventConsumerTest extends AbstractIT {
@@ -26,17 +31,17 @@ public class EventConsumerTest extends AbstractIT {
 
         List<Event> values = new ArrayList<>();
 
-        Properties properties = TestConsumerProperties.getProperties(kafkaContainer.getBootstrapServers());
-        properties.put(ConsumerConfig.GROUP_ID_CONFIG, "test-eventconsumer-group");
+        ConsumerBootstrap consumerBootstrap = ConsumerBootstrap.forTopic(
+            kafkaContainer.getBootstrapServers(),
+            "client-consumer",
+            "test-eventconsumer-group",
+            TOPIC);
 
         EventConsumer eventConsumer = new EventConsumer(
-            properties,
-            List.of(TOPIC),
+            consumerBootstrap,
             (_, value) -> values.add(value),
             new PlainTextSecurity(),
-            null,
-            null
-            );
+            Map.of(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"));
 
         producer.send(new ProducerRecord<>(TOPIC, "key", buildTestEvent())).get();
 
@@ -48,6 +53,64 @@ public class EventConsumerTest extends AbstractIT {
             .pollInterval(Duration.ofSeconds(2))
             .untilAsserted(() -> {
                 assertThat(values.isEmpty()).isFalse();
+                eventConsumer.stop(); // Closes polling thread.
+            });
+    }
+
+    @Test
+    void consumer_should_handle_duplicates() {
+
+        List<Event> values = new ArrayList<>();
+
+        // Create event, producer, consumer and DLQ topic.
+        ProducerBootstrap producerBootstrap = new ProducerBootstrap(kafkaContainer.getBootstrapServers(), "client-producer");
+        String dlqTopic = getDlqTopic(null, TOPIC);
+
+        // Event must be created once to share the same timestamp.
+        Event event = buildTestEvent();
+
+        createTopic(dlqTopic, 1, (short) 1);
+
+        // Use an EventProducer to produce with correct headers.
+        EventProducer eventProducer = new EventProducer(producerBootstrap, new PlainTextSecurity());
+
+        ConsumerBootstrap consumerBootstrap = ConsumerBootstrap.forTopic(
+            kafkaContainer.getBootstrapServers(),
+            "client-consumer",
+            "test-eventconsumer-group",
+            TOPIC);
+
+        EventConsumer eventConsumer = new EventConsumer(
+            consumerBootstrap,
+            (_, value) -> values.add(value),
+            new PlainTextSecurity(),
+            null, null,
+            Map.of(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"),
+            false,
+            new InMemoryIdempotencyKeyStore(),
+            dlqTopic
+        );
+
+        // Subscribe to DLQ topic.
+        consumer.subscribe(List.of(dlqTopic));
+
+        // Publish same event twice.
+        eventProducer.publish(TOPIC, "key", event);
+        eventProducer.publish(TOPIC, "key", event);
+
+        eventConsumer.run();
+
+        // Assert duplicate has been consumed and published to DLQ.
+        Awaitility
+            .await()
+            .atMost(Duration.ofSeconds(15))
+            .pollInterval(Duration.ofSeconds(2))
+            .untilAsserted(() -> {
+                assertThat(values.size()).isEqualTo(2);
+
+                ConsumerRecords<String, Event> records = consumer.poll(Duration.ofSeconds(5));
+                assertThat(records.records(dlqTopic).iterator().hasNext()).isTrue();
+
                 eventConsumer.stop(); // Closes polling thread.
             });
     }

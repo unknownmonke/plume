@@ -1,9 +1,11 @@
 package org.plume.producer;
 
+import lombok.RequiredArgsConstructor;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.Header;
 import org.plume.event.Event;
 import org.plume.event.Metadata;
+import org.plume.idempotency.hash.HashGenerator;
 
 import java.util.List;
 import java.util.Optional;
@@ -11,7 +13,10 @@ import java.util.Optional;
 import static java.util.Optional.ofNullable;
 import static org.plume.event.EventHeaders.*;
 
+@RequiredArgsConstructor
 public class ProducerRecordBuilder {
+
+    private final HashGenerator hashGenerator;
 
     public ProducerRecord<String, Event> buildRecord(String topic, String key, Event event) {
         ProducerRecord<String, Event> producerRecord = new ProducerRecord<>(topic, key, event);
@@ -46,13 +51,14 @@ public class ProducerRecordBuilder {
     }
 
     private void addMetadataHeaders(Metadata metadata, ProducerRecord<String, Event> producerRecord) {
+        producerRecord.headers().add(UUID, metadata.uuid().getBytes());
         producerRecord.headers().add(CORRELATION_ID, metadata.correlationId().getBytes());
-        producerRecord.headers().add(IDENTITY_IDENTIFIER, metadata.identity().identifier().getBytes());
+        producerRecord.headers().add(TYPE, metadata.type().toString().getBytes());
+        producerRecord.headers().add(TIMESTAMP, metadata.timestamp().toString().getBytes());
         producerRecord.headers().add(SOURCE_APP, metadata.source().app().getBytes());
         producerRecord.headers().add(SOURCE_DOMAIN, metadata.source().domain().getBytes());
-        producerRecord.headers().add(TIMESTAMP, metadata.timestamp().toString().getBytes());
-        producerRecord.headers().add(TYPE, metadata.type().toString().getBytes());
-        producerRecord.headers().add(UUID, metadata.uuid().getBytes());
+        producerRecord.headers().add(IDENTITY_IDENTIFIER, metadata.identity().identifier().getBytes());
+        producerRecord.headers().add(IDEMPOTENCY_KEY, hashGenerator.hash(producerRecord.value()).getBytes());
     }
 
     private void addOptionalHeaders(Metadata metadata, ProducerRecord<String, Event> producerRecord) {

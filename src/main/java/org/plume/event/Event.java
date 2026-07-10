@@ -6,7 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.NonNull;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 
 import static java.util.UUID.randomUUID;
@@ -33,15 +33,16 @@ public class Event implements Serializable {
                  @NonNull Type type,
                  @NonNull Source source,
                  @NonNull Identity identity,
+                 @NonNull Exposure exposure,
                  String correlationId,
-                 String exposure,
+                 Instant timestamp,
                  Map<?, ?> additionalProperties) {
 
         this.payload = payload;
         this.metadata = Metadata.builder()
             .uuid(randomUUID().toString())
             .correlationId(correlationId)
-            .timestamp(LocalDateTime.now())
+            .timestamp(timestamp == null ? Instant.now() : timestamp)
             .type(type)
             .source(source)
             .identity(identity)
@@ -55,7 +56,8 @@ public class Event implements Serializable {
                  @NonNull Type type,
                  @NonNull Source source,
                  @NonNull Identity identity,
-                 String exposure,
+                 @NonNull Exposure exposure,
+                 Instant timestamp,
                  Map<?, ?> additionalProperties,
                  Event origin) {
 
@@ -64,7 +66,7 @@ public class Event implements Serializable {
             .uuid(randomUUID().toString())
             .correlationId(origin.getMetadata().correlationId())
             .parentId(origin.getMetadata().uuid())
-            .timestamp(LocalDateTime.now())
+            .timestamp(timestamp == null ? Instant.now() : timestamp)
             .type(type)
             .source(source)
             .identity(identity)

@@ -3,6 +3,7 @@ package org.plume.event;
 public class EventHeaders {
 
     public static final String CORRELATION_ID = "correlationId";
+    public static final String IDEMPOTENCY_KEY = "idempotencyKey";
     public static final String IDENTITY_IDENTIFIER = "identity.identifier";
     public static final String IDENTITY_AUTHENTICATION = "identity.authentication";
     public static final String KEY = "key";

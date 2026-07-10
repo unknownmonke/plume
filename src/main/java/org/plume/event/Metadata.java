@@ -4,7 +4,7 @@ import lombok.Builder;
 import lombok.NonNull;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.Map;
 
 /**
@@ -15,10 +15,10 @@ public record Metadata(
     @NonNull String uuid,
     @NonNull String correlationId,
     String parentId,
-    LocalDateTime timestamp,
+    Instant timestamp,
     Type type,
     Source source,
     Identity identity,
-    String exposure,
+    Exposure exposure,
     Map<?, ?> additionalProperties
 ) implements Serializable {}

@@ -1,15 +1,18 @@
 package org.plume.event;
 
+import java.time.Instant;
+
 public class TestEventFactory {
 
     public static Event buildTestEvent() {
         return new Event(
             "payload",
             Type.INITIAL,
-            Source.builder().app("app").domain("domain").build(),
-            new Identity("identity", null),
+            new Source("app", "domain"),
+            new Identity("identity"),
+            Exposure.INITIAL,
             "1234",
-            "ini",
+            Instant.now(),
             null);
     }
 }

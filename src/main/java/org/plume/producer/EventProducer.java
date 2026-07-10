@@ -8,6 +8,10 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.header.Header;
 import org.plume.event.Event;
+import org.plume.event.EventFactory;
+import org.plume.idempotency.IdempotencyKeyStore;
+import org.plume.idempotency.hash.Base64HashGenerator;
+import org.plume.idempotency.hash.HashGenerator;
 import org.plume.lifecycle.ShutdownManager;
 import org.plume.security.Security;
 
@@ -17,47 +21,83 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.Future;
 
+import static org.plume.common.Constants.getDlqTopic;
+
 @Slf4j
 public class EventProducer {
 
-    private final Map<?, ?> properties;
+    private final ProducerBootstrap producerBootstrap;
     private final Security security;
     private final ShutdownManager shutdownManager;
+    private final Map<?, ?> customProperties;
+    private final boolean disableIdempotencyCheck;
+    private final HashGenerator hashGenerator;
+    private final IdempotencyKeyStore idempotencyKeyStore;
+    private final String dlqTopic;
 
-    private KafkaProducer<String, Event> kafkaProducer;
     private ProducerRecordBuilder producerRecordBuilder;
+    private KafkaProducer<String, Event> kafkaProducer;
+    private InternalEventProducer internalProducer;
 
 
-    public EventProducer(@NonNull Map<?, ?> properties,
+    // Basic constructor with only required values.
+    public EventProducer(@NonNull ProducerBootstrap producerBootstrap, @NonNull Security security) {
+        this(producerBootstrap, security,
+            null, null, true, null, null, null);
+    }
+
+    public EventProducer(@NonNull ProducerBootstrap producerBootstrap,
                          @NonNull Security security,
-                         ShutdownManager shutdownManager) {
+                         ShutdownManager shutdownManager,
+                         Map<?, ?> customProperties,
+                         boolean disableIdempotencyCheck,
+                         HashGenerator hashGenerator,
+                         IdempotencyKeyStore idempotencyKeyStore,
+                         String dlqTopic) {
         log.info("Initializing producer...");
 
-        this.properties = properties;
+        this.producerBootstrap = producerBootstrap;
         this.security = security;
         this.shutdownManager = shutdownManager;
+        this.customProperties = customProperties;
+        this.disableIdempotencyCheck = disableIdempotencyCheck;
+        this.hashGenerator = hashGenerator != null ? hashGenerator : new Base64HashGenerator();
+        this.idempotencyKeyStore = maybeSetIdempotencyStore(idempotencyKeyStore);
+        this.dlqTopic = dlqTopic;
 
         setupProducer();
     }
 
 
     private void setupProducer() {
-        this.producerRecordBuilder = new ProducerRecordBuilder();
+        this.producerRecordBuilder = new ProducerRecordBuilder(hashGenerator);
         this.kafkaProducer = new KafkaProducer<>(buildConfig());
+        this.internalProducer = buildInternalProducer();
         addShutdownHook();
     }
 
     private Properties buildConfig() {
         Properties config = new Properties();
 
-        // Applies security configuration.
-        security.securityConfig();
+        // Applies common configuration.
+        config.putAll(producerBootstrap.properties());
 
-        // Registers supplied custom properties.
-        if (properties != null) {
-            config.putAll(properties);
+        // Applies security configuration.
+        config.putAll(security.securityConfig());
+
+        // Registers custom properties if any.
+        if (customProperties != null) {
+            config.putAll(customProperties);
         }
         return config;
+    }
+
+    private InternalEventProducer buildInternalProducer() {
+        ProducerBootstrap internalProducerBootstrap = new ProducerBootstrap(
+            producerBootstrap.getBootstrapServers(),
+            producerBootstrap.getClientId() + "-internal-producer"
+        );
+        return new InternalEventProducer(internalProducerBootstrap, security);
     }
 
     /**
@@ -73,51 +113,75 @@ public class EventProducer {
         }
     }
 
+    private IdempotencyKeyStore maybeSetIdempotencyStore(IdempotencyKeyStore idempotencyKeyStore) {
+        if (idempotencyKeyStore == null) {
+            if (!disableIdempotencyCheck) {
+                throw new IllegalStateException(
+                    "IdempotencyKeyStore implementation is required. " +
+                        "Provide one via idempotencyKeyStore(...) " +
+                        "or explicitly opt-out with disableIdempotencyCheck().");
+            }
+            log.warn("Producer-side IdempotencyKeyStore feature is explicitly disabled. "
+                + "Duplicate events will not be detected and may be published more than once.");
+        }
+        return idempotencyKeyStore;
+    }
+
     /* ------------------------------------------------------------ */
     /* Async publish with optional headers, partition and callback. */
     /* ------------------------------------------------------------ */
 
     public Future<RecordMetadata> publish(String topic, String key, Event event) {
         ProducerRecord<String, Event> producerRecord = producerRecordBuilder.buildRecord(topic, key, event);
-        return publishRecord(producerRecord);
+        return publishAndMaybeHandleDuplicate(producerRecord);
     }
 
     public Future<RecordMetadata> publish(String topic, String key, Event event,
                                           List<? extends Header> headers) {
         ProducerRecord<String, Event> producerRecord = producerRecordBuilder.buildRecord(topic, key, event, headers);
 
-        return publishRecord(producerRecord);
+        return publishAndMaybeHandleDuplicate(producerRecord);
     }
 
     public Future<RecordMetadata> publish(String topic, String key, Event event,
                                           Integer partition, List<? extends Header> headers) {
         ProducerRecord<String, Event> producerRecord = producerRecordBuilder.buildRecord(topic, key, event,partition, headers);
 
-        return publishRecord(producerRecord);
+        return publishAndMaybeHandleDuplicate(producerRecord);
     }
 
     public Future<RecordMetadata> publish(String topic, String key, Event event,Callback callback) {
         ProducerRecord<String, Event> producerRecord = producerRecordBuilder.buildRecord(topic, key, event);
 
-        return publishRecord(producerRecord, callback);
+        return publishAndMaybeHandleDuplicate(producerRecord, callback);
     }
 
     public Future<RecordMetadata> publish(String topic, String key, Event event,
                                           List<? extends Header> headers, Callback callback) {
         ProducerRecord<String, Event> producerRecord = producerRecordBuilder.buildRecord(topic, key, event, headers);
 
-        return publishRecord(producerRecord, callback);
+        return publishAndMaybeHandleDuplicate(producerRecord, callback);
     }
 
     public Future<RecordMetadata> publish(String topic, String key, Event event,
                                           Integer partition, List<? extends Header> headers, Callback callback) {
-        ProducerRecord<String, Event> producerRecord = producerRecordBuilder.buildRecord(topic, key, event,partition, headers);
+        ProducerRecord<String, Event> producerRecord = producerRecordBuilder.buildRecord(topic, key, event, partition, headers);
 
-        return publishRecord(producerRecord, callback);
+        return publishAndMaybeHandleDuplicate(producerRecord, callback);
     }
 
-    private Future<RecordMetadata> publishRecord(ProducerRecord<String, Event> producerRecord) {
-        return publishRecord(producerRecord, (_, _) -> {});
+    private Future<RecordMetadata> publishAndMaybeHandleDuplicate(ProducerRecord<String, Event> producerRecord) {
+        return publishAndMaybeHandleDuplicate(producerRecord, null);
+    }
+
+    private Future<RecordMetadata> publishAndMaybeHandleDuplicate(ProducerRecord<String, Event> producerRecord, Callback callback) {
+        if (!disableIdempotencyCheck) {
+            if (isDuplicate(producerRecord)) {
+                return publishToDlq(producerRecord);
+            }
+            idempotencyKeyStore.save(producerRecord);
+        }
+        return publishRecord(producerRecord, callback);
     }
 
     private Future<RecordMetadata> publishRecord(ProducerRecord<String, Event> producerRecord, Callback callback) {
@@ -125,8 +189,8 @@ public class EventProducer {
 
         return kafkaProducer.send(producerRecord, (metadata, exception) -> {
             // On success.
-            if (Objects.isNull(exception)) {
-                log.debug("Acknowledged record. \n Topic: {}\n Partition: {}\n Offset: {}\n Timestamp: {}",
+            if (exception == null) {
+                log.debug("Acknowledged record: \n Topic: {}\n Partition: {}\n Offset: {}\n Timestamp: {}",
                     metadata.topic(),
                     metadata.partition(),
                     metadata.offset(),
@@ -134,11 +198,32 @@ public class EventProducer {
             }
             // On error.
             else {
-                log.error("Error trying to publish : correlation id {}",
-                    event.getMetadata().correlationId(), exception);
+                log.error("Error trying to publish: correlationId={}, topic={}",
+                    event.getMetadata().correlationId(), producerRecord.topic(), exception);
             }
             // Custom provided callback.
-            callback.onCompletion(metadata, exception);
+            if (callback != null) {
+                callback.onCompletion(metadata, exception);
+            }
         });
+    }
+
+    private boolean isDuplicate(ProducerRecord<String, Event> producerRecord) {
+        if (idempotencyKeyStore.exists(producerRecord).isPresent()) {
+            log.info("⚠ Duplicate event detected: key={}, topic={}", producerRecord.key(), producerRecord.topic());
+            return true;
+        }
+        return false;
+    }
+
+    private Future<RecordMetadata> publishToDlq(ProducerRecord<String, Event> originalRecord) {
+        String topic = getDlqTopic(dlqTopic, originalRecord.topic());
+        String key = originalRecord.key();
+        Event event = originalRecord.value();
+
+        Event ignoredEvent = EventFactory.buildIgnoreEvent(event, "Duplicate event detected by producer-side idempotency");
+
+        log.info("(Publishing duplicate to DLQ: key={}, topic={})", key, topic);
+        return internalProducer.publish(topic, key, ignoredEvent);
     }
 }

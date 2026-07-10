@@ -3,25 +3,29 @@ package org.plume.integration.producer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.junit.jupiter.api.Test;
 import org.plume.event.Event;
+import org.plume.idempotency.InMemoryIdempotencyKeyStore;
+import org.plume.idempotency.hash.Base64HashGenerator;
 import org.plume.integration.common.AbstractIT;
-import org.plume.integration.config.TestProducerProperties;
 import org.plume.producer.EventProducer;
+import org.plume.producer.ProducerBootstrap;
 import org.plume.security.PlainTextSecurity;
 
 import java.time.Duration;
 import java.util.Collections;
-import java.util.Properties;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.plume.common.Constants.getDlqTopic;
 import static org.plume.event.TestEventFactory.buildTestEvent;
 
 public class EventProducerTest extends AbstractIT {
 
     @Test
     void producer_should_publish_event() throws ExecutionException, InterruptedException {
-        Properties properties = TestProducerProperties.getProperties(kafkaContainer.getBootstrapServers());
+        ProducerBootstrap producerBootstrap = new ProducerBootstrap(kafkaContainer.getBootstrapServers(), "client-producer");
 
-        EventProducer eventProducer = new EventProducer(properties, new PlainTextSecurity(), null);
+        EventProducer eventProducer = new EventProducer(producerBootstrap, new PlainTextSecurity());
 
         eventProducer.publish(TOPIC, "key", buildTestEvent()).get();
 
@@ -29,5 +33,42 @@ public class EventProducerTest extends AbstractIT {
 
         ConsumerRecords<String, Event> records = consumer.poll(Duration.ofSeconds(5));
         assert records.count() > 0;
+    }
+
+    @Test
+    void producer_should_handle_duplicates() throws ExecutionException, InterruptedException {
+
+        // Create event, producer and DLQ topic.
+        ProducerBootstrap producerBootstrap = new ProducerBootstrap(kafkaContainer.getBootstrapServers(), "client-producer");
+        String dlqTopic = getDlqTopic(null, TOPIC);
+
+        // Event must be created once to share the same timestamp.
+        Event event = buildTestEvent();
+
+        createTopic(dlqTopic, 1, (short) 1);
+
+        EventProducer eventProducer = new EventProducer(
+            producerBootstrap,
+            new PlainTextSecurity(),
+            null,
+            null,
+            false,
+            new Base64HashGenerator(),
+            new InMemoryIdempotencyKeyStore(),
+            dlqTopic
+            );
+
+        // Subscribe to all topics.
+        consumer.subscribe(List.of(TOPIC, dlqTopic));
+
+        // Publish same event twice.
+        eventProducer.publish(TOPIC, "key", event).get();
+        eventProducer.publish(TOPIC, "key", event).get();
+
+        // Assert published duplicate has been published to DLQ.
+        ConsumerRecords<String, Event> records = consumer.poll(Duration.ofSeconds(5));
+
+        assertThat(records.records(TOPIC).iterator().hasNext()).isTrue();
+        assertThat(records.records(dlqTopic).iterator().hasNext()).isTrue();
     }
 }
