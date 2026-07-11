@@ -13,11 +13,9 @@ import org.plume.idempotency.IdempotencyKeyStore;
 import org.plume.idempotency.hash.Base64HashGenerator;
 import org.plume.idempotency.hash.HashGenerator;
 import org.plume.lifecycle.ShutdownManager;
-import org.plume.security.Security;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.Future;
 
@@ -27,7 +25,6 @@ import static org.plume.common.Constants.getDlqTopic;
 public class EventProducer {
 
     private final ProducerBootstrap producerBootstrap;
-    private final Security security;
     private final ShutdownManager shutdownManager;
     private final Map<?, ?> customProperties;
     private final boolean disableIdempotencyCheck;
@@ -41,13 +38,12 @@ public class EventProducer {
 
 
     // Basic constructor with only required values.
-    public EventProducer(@NonNull ProducerBootstrap producerBootstrap, @NonNull Security security) {
-        this(producerBootstrap, security,
+    public EventProducer(@NonNull ProducerBootstrap producerBootstrap) {
+        this(producerBootstrap,
             null, null, true, null, null, null);
     }
 
     public EventProducer(@NonNull ProducerBootstrap producerBootstrap,
-                         @NonNull Security security,
                          ShutdownManager shutdownManager,
                          Map<?, ?> customProperties,
                          boolean disableIdempotencyCheck,
@@ -57,7 +53,6 @@ public class EventProducer {
         log.info("Initializing producer...");
 
         this.producerBootstrap = producerBootstrap;
-        this.security = security;
         this.shutdownManager = shutdownManager;
         this.customProperties = customProperties;
         this.disableIdempotencyCheck = disableIdempotencyCheck;
@@ -82,9 +77,6 @@ public class EventProducer {
         // Applies common configuration.
         config.putAll(producerBootstrap.properties());
 
-        // Applies security configuration.
-        config.putAll(security.securityConfig());
-
         // Registers custom properties if any.
         if (customProperties != null) {
             config.putAll(customProperties);
@@ -95,9 +87,10 @@ public class EventProducer {
     private InternalEventProducer buildInternalProducer() {
         ProducerBootstrap internalProducerBootstrap = new ProducerBootstrap(
             producerBootstrap.getBootstrapServers(),
-            producerBootstrap.getClientId() + "-internal-producer"
+            producerBootstrap.getClientId() + "-internal-producer",
+            producerBootstrap.getSecurity()
         );
-        return new InternalEventProducer(internalProducerBootstrap, security);
+        return new InternalEventProducer(internalProducerBootstrap);
     }
 
     /**

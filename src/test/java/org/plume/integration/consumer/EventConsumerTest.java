@@ -34,13 +34,13 @@ public class EventConsumerTest extends AbstractIT {
         ConsumerBootstrap consumerBootstrap = ConsumerBootstrap.forTopic(
             kafkaContainer.getBootstrapServers(),
             "client-consumer",
+            new PlainTextSecurity(),
             "test-eventconsumer-group",
             TOPIC);
 
         EventConsumer eventConsumer = new EventConsumer(
             consumerBootstrap,
             (_, value) -> values.add(value),
-            new PlainTextSecurity(),
             Map.of(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"));
 
         producer.send(new ProducerRecord<>(TOPIC, "key", buildTestEvent())).get();
@@ -63,7 +63,8 @@ public class EventConsumerTest extends AbstractIT {
         List<Event> values = new ArrayList<>();
 
         // Create event, producer, consumer and DLQ topic.
-        ProducerBootstrap producerBootstrap = new ProducerBootstrap(kafkaContainer.getBootstrapServers(), "client-producer");
+        ProducerBootstrap producerBootstrap = new ProducerBootstrap(
+            kafkaContainer.getBootstrapServers(), "client-producer", new PlainTextSecurity());
         String dlqTopic = getDlqTopic(null, TOPIC);
 
         // Event must be created once to share the same timestamp.
@@ -72,18 +73,18 @@ public class EventConsumerTest extends AbstractIT {
         createTopic(dlqTopic, 1, (short) 1);
 
         // Use an EventProducer to produce with correct headers.
-        EventProducer eventProducer = new EventProducer(producerBootstrap, new PlainTextSecurity());
+        EventProducer eventProducer = new EventProducer(producerBootstrap);
 
         ConsumerBootstrap consumerBootstrap = ConsumerBootstrap.forTopic(
             kafkaContainer.getBootstrapServers(),
             "client-consumer",
+            new PlainTextSecurity(),
             "test-eventconsumer-group",
             TOPIC);
 
         EventConsumer eventConsumer = new EventConsumer(
             consumerBootstrap,
             (_, value) -> values.add(value),
-            new PlainTextSecurity(),
             null, null,
             Map.of(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"),
             false,

@@ -8,9 +8,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.plume.event.Event;
 import org.plume.idempotency.hash.Base64HashGenerator;
 import org.plume.idempotency.hash.HashGenerator;
-import org.plume.security.Security;
 
-import java.util.Properties;
 import java.util.concurrent.Future;
 
 /**
@@ -26,16 +24,14 @@ import java.util.concurrent.Future;
 public class InternalEventProducer {
 
     private final ProducerBootstrap producerBootstrap;
-    private final Security security;
     private final HashGenerator hashGenerator;
 
     private KafkaProducer<String, Event> kafkaProducer;
     private ProducerRecordBuilder producerRecordBuilder;
 
 
-    public InternalEventProducer(@NonNull ProducerBootstrap producerBootstrap, @NonNull Security security) {
+    public InternalEventProducer(@NonNull ProducerBootstrap producerBootstrap) {
         this.producerBootstrap = producerBootstrap;
-        this.security = security;
         this.hashGenerator = new Base64HashGenerator();
 
         setupProducer();
@@ -44,20 +40,8 @@ public class InternalEventProducer {
 
     private void setupProducer() {
         this.producerRecordBuilder = new ProducerRecordBuilder(hashGenerator);
-        this.kafkaProducer = new KafkaProducer<>(buildConfig());
+        this.kafkaProducer = new KafkaProducer<>(producerBootstrap.properties());
         addShutdownHook();
-    }
-
-    private Properties buildConfig() {
-        Properties config = new Properties();
-
-        // Applies common configuration.
-        config.putAll(producerBootstrap.properties());
-
-        // Applies security configuration.
-        config.putAll(security.securityConfig());
-
-        return config;
     }
 
     /**

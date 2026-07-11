@@ -3,6 +3,7 @@ package org.plume.producer;
 import lombok.ToString;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.plume.common.AbstractBootstrap;
+import org.plume.security.Security;
 import org.plume.serialization.EventSerializer;
 
 import java.util.Properties;
@@ -18,8 +19,8 @@ import static org.plume.common.Constants.ACKS;
 @ToString(callSuper = true)
 public class ProducerBootstrap extends AbstractBootstrap {
 
-    public ProducerBootstrap(String bootstrapServers, String clientId) {
-        super(bootstrapServers, clientId);
+    public ProducerBootstrap(String bootstrapServers, String clientId, Security security) {
+        super(bootstrapServers, clientId, security);
     }
 
 

@@ -23,9 +23,10 @@ public class EventProducerTest extends AbstractIT {
 
     @Test
     void producer_should_publish_event() throws ExecutionException, InterruptedException {
-        ProducerBootstrap producerBootstrap = new ProducerBootstrap(kafkaContainer.getBootstrapServers(), "client-producer");
+        ProducerBootstrap producerBootstrap = new ProducerBootstrap(
+            kafkaContainer.getBootstrapServers(), "client-producer", new PlainTextSecurity());
 
-        EventProducer eventProducer = new EventProducer(producerBootstrap, new PlainTextSecurity());
+        EventProducer eventProducer = new EventProducer(producerBootstrap);
 
         eventProducer.publish(TOPIC, "key", buildTestEvent()).get();
 
@@ -39,7 +40,8 @@ public class EventProducerTest extends AbstractIT {
     void producer_should_handle_duplicates() throws ExecutionException, InterruptedException {
 
         // Create event, producer and DLQ topic.
-        ProducerBootstrap producerBootstrap = new ProducerBootstrap(kafkaContainer.getBootstrapServers(), "client-producer");
+        ProducerBootstrap producerBootstrap = new ProducerBootstrap(
+            kafkaContainer.getBootstrapServers(), "client-producer", new PlainTextSecurity());
         String dlqTopic = getDlqTopic(null, TOPIC);
 
         // Event must be created once to share the same timestamp.
@@ -49,7 +51,6 @@ public class EventProducerTest extends AbstractIT {
 
         EventProducer eventProducer = new EventProducer(
             producerBootstrap,
-            new PlainTextSecurity(),
             null,
             null,
             false,

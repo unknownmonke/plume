@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.ToString;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.plume.common.AbstractBootstrap;
+import org.plume.security.Security;
 import org.plume.serialization.EventDeserializer;
 
 import java.util.List;
@@ -25,22 +26,22 @@ public class ConsumerBootstrap extends AbstractBootstrap {
     private List<String> topics;
 
 
-    private ConsumerBootstrap(String bootstrapServers, String clientId, String groupId) {
-        super(bootstrapServers, clientId);
+    private ConsumerBootstrap(String bootstrapServers, String clientId, Security security, String groupId) {
+        super(bootstrapServers, clientId, security);
         this.groupId = groupId;
     }
 
 
-    public static ConsumerBootstrap forTopic(String bootstrapServers,
-                                             String clientId, String groupId, String topic) {
-        ConsumerBootstrap config = new ConsumerBootstrap(bootstrapServers, clientId, groupId);
+    public static ConsumerBootstrap forTopic(String bootstrapServers, String clientId, Security security,
+                                             String groupId, String topic) {
+        ConsumerBootstrap config = new ConsumerBootstrap(bootstrapServers, clientId, security, groupId);
         config.topics = List.of(topic);
         return config;
     }
 
-    public static ConsumerBootstrap forTopic(String bootstrapServers,
-                                             String clientId, String groupId, List<String> topics) {
-        ConsumerBootstrap config = new ConsumerBootstrap(bootstrapServers, clientId, groupId);
+    public static ConsumerBootstrap forTopic(String bootstrapServers, String clientId, Security security,
+                                             String groupId, List<String> topics) {
+        ConsumerBootstrap config = new ConsumerBootstrap(bootstrapServers, clientId, security, groupId);
         config.topics = topics;
         return config;
     }

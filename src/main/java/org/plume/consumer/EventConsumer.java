@@ -14,7 +14,6 @@ import org.plume.lifecycle.ShutdownManager;
 import org.plume.lifecycle.StartupManager;
 import org.plume.producer.InternalEventProducer;
 import org.plume.producer.ProducerBootstrap;
-import org.plume.security.Security;
 
 import java.time.Duration;
 import java.util.Map;
@@ -31,7 +30,6 @@ public class EventConsumer implements Runnable {
 
     private final ConsumerBootstrap consumerBootstrap;
     private final BiConsumer<Headers, Event> consumerFunction;
-    private final Security security;
     private final StartupManager startupManager;
     private final ShutdownManager shutdownManager;
     private final Map<?, ?> customProperties;
@@ -46,15 +44,13 @@ public class EventConsumer implements Runnable {
     // Basic constructor with only required values.
     public EventConsumer(@NonNull ConsumerBootstrap consumerBootstrap,
                          @NonNull BiConsumer<Headers, Event> consumerFunction,
-                         @NonNull Security security,
                          Map<?, ?> customProperties) {
-        this(consumerBootstrap, consumerFunction, security,
+        this(consumerBootstrap, consumerFunction,
             null, null, customProperties, true, null, null);
     }
 
     public EventConsumer(@NonNull ConsumerBootstrap consumerBootstrap,
                          @NonNull BiConsumer<Headers, Event> consumerFunction,
-                         @NonNull Security security,
                          StartupManager startupManager,
                          ShutdownManager shutdownManager,
                          Map<?, ?> customProperties,
@@ -66,7 +62,6 @@ public class EventConsumer implements Runnable {
 
         this.consumerBootstrap = consumerBootstrap;
         this.consumerFunction = consumerFunction;
-        this.security = security;
         this.startupManager = startupManager;
         this.shutdownManager = shutdownManager;
         this.customProperties = customProperties;
@@ -91,9 +86,6 @@ public class EventConsumer implements Runnable {
         // Applies common configuration.
         config.putAll(consumerBootstrap.properties());
 
-        // Applies security configuration.
-        config.putAll(security.securityConfig());
-
         // Registers supplied custom properties.
         if (customProperties != null) {
             config.putAll(customProperties);
@@ -104,10 +96,11 @@ public class EventConsumer implements Runnable {
     private InternalEventProducer buildInternalProducer() {
         ProducerBootstrap internalProducerBootstrap = new ProducerBootstrap(
             consumerBootstrap.getBootstrapServers(),
-            consumerBootstrap.getClientId() + "-internal-producer"
+            consumerBootstrap.getClientId() + "-internal-producer",
+            consumerBootstrap.getSecurity()
         );
 
-        return new InternalEventProducer(internalProducerBootstrap, security);
+        return new InternalEventProducer(internalProducerBootstrap);
     }
 
     /**
