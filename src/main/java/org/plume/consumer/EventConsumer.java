@@ -1,6 +1,7 @@
 package org.plume.consumer;
 
 import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -33,7 +34,7 @@ public class EventConsumer implements Runnable {
     private final StartupManager startupManager;
     private final ShutdownManager shutdownManager;
     private final Map<?, ?> customProperties;
-    private final boolean disableIdempotencyCheck;
+    private final boolean enableIdempotencyCheck;
     private final IdempotencyKeyStore idempotencyKeyStore;
     private final String dlqTopic;
 
@@ -41,20 +42,12 @@ public class EventConsumer implements Runnable {
     private InternalEventProducer internalProducer;
 
 
-    // Basic constructor with only required values.
-    public EventConsumer(@NonNull ConsumerBootstrap consumerBootstrap,
-                         @NonNull BiConsumer<Headers, Event> consumerFunction,
-                         Map<?, ?> customProperties) {
-        this(consumerBootstrap, consumerFunction,
-            null, null, customProperties, true, null, null);
-    }
-
-    public EventConsumer(@NonNull ConsumerBootstrap consumerBootstrap,
+    private EventConsumer(@NonNull ConsumerBootstrap consumerBootstrap,
                          @NonNull BiConsumer<Headers, Event> consumerFunction,
                          StartupManager startupManager,
                          ShutdownManager shutdownManager,
                          Map<?, ?> customProperties,
-                         boolean disableIdempotencyCheck,
+                         boolean enableIdempotencyCheck,
                          IdempotencyKeyStore idempotencyKeyStore,
                          String dlqTopic
     ) {
@@ -65,13 +58,18 @@ public class EventConsumer implements Runnable {
         this.startupManager = startupManager;
         this.shutdownManager = shutdownManager;
         this.customProperties = customProperties;
-        this.disableIdempotencyCheck = disableIdempotencyCheck;
+        this.enableIdempotencyCheck = enableIdempotencyCheck;
         this.idempotencyKeyStore = maybeSetIdempotencyStore(idempotencyKeyStore);
         this.dlqTopic = dlqTopic;
 
         setupConsumer();
     }
 
+
+    public static ConsumerBuilder with(ConsumerBootstrap consumerBootstrap,
+                                       BiConsumer<Headers, Event> consumerFunction) {
+        return new ConsumerBuilder(consumerBootstrap, consumerFunction);
+    }
 
     private void setupConsumer() {
         this.kafkaConsumer = new KafkaConsumer<>(buildConfig());
@@ -94,11 +92,11 @@ public class EventConsumer implements Runnable {
     }
 
     private InternalEventProducer buildInternalProducer() {
-        ProducerBootstrap internalProducerBootstrap = new ProducerBootstrap(
-            consumerBootstrap.getBootstrapServers(),
-            consumerBootstrap.getClientId() + "-internal-producer",
-            consumerBootstrap.getSecurity()
-        );
+        ProducerBootstrap internalProducerBootstrap = ProducerBootstrap.with(
+                consumerBootstrap.getBootstrapServers(),
+                consumerBootstrap.getClientId() + "-internal-producer",
+                consumerBootstrap.getSecurity()
+            ).build();
 
         return new InternalEventProducer(internalProducerBootstrap);
     }
@@ -127,13 +125,13 @@ public class EventConsumer implements Runnable {
 
     private IdempotencyKeyStore maybeSetIdempotencyStore(IdempotencyKeyStore idempotencyKeyStore) {
         if (idempotencyKeyStore == null) {
-            if (!disableIdempotencyCheck) {
+            if (enableIdempotencyCheck) {
                 throw new IllegalStateException(
-                    "IdempotencyKeyStore implementation is required. " +
-                        "Provide one in constructor " +
-                        "or explicitly opt-out by setting disableIdempotencyCheck to true.");
+                    "Idempotency check is active without an IdempotencyKeyStore implementation. " +
+                        "Provide one via idempotencyKeyStore(...) " +
+                        "or remove enableIdempotencyCheck() for default behavior.");
             }
-            log.warn("Consumer-side idempotency feature is explicitly disabled. "
+            log.warn("Producer-side IdempotencyKeyStore feature is explicitly disabled. "
                 + "Duplicate events will not be detected and may be published more than once.");
         }
         return idempotencyKeyStore;
@@ -177,7 +175,7 @@ public class EventConsumer implements Runnable {
     }
 
     private void maybeProcessRecord(ConsumerRecord<String, Event> consumerRecord) {
-        if (!disableIdempotencyCheck) {
+        if (enableIdempotencyCheck) {
             if (isDuplicate(consumerRecord)) {
                 publishToDlq(consumerRecord);
             }
@@ -206,5 +204,61 @@ public class EventConsumer implements Runnable {
 
         log.info("(Publishing duplicate to DLQ: key={}, topic={})", key, topic);
         internalProducer.publish(topic, key, ignoredEvent);
+    }
+
+    /* ------------------------------------------------------------------------ */
+
+    /**
+     * Restricted builder for optional arguments only.
+     */
+    @RequiredArgsConstructor
+    public static class ConsumerBuilder {
+
+        private final ConsumerBootstrap consumerBootstrap;
+        private final BiConsumer<Headers, Event> consumerFunction;
+        private StartupManager startupManager;
+        private ShutdownManager shutdownManager;
+        private Map<?, ?> customProperties;
+        private boolean enableIdempotencyCheck = false;
+        private IdempotencyKeyStore idempotencyKeyStore;
+        private String dlqTopic;
+
+
+        public ConsumerBuilder startupManager(StartupManager startupManager) {
+            this.startupManager = startupManager;
+            return this;
+        }
+
+        public ConsumerBuilder shutdownManager(ShutdownManager shutdownManager) {
+            this.shutdownManager = shutdownManager;
+            return this;
+        }
+
+        public ConsumerBuilder customProperties(Map<?, ?> customProperties) {
+            this.customProperties = customProperties;
+            return this;
+        }
+
+        public ConsumerBuilder enableIdempotencyCheck() {
+            this.enableIdempotencyCheck = true;
+            return this;
+        }
+
+        public ConsumerBuilder idempotencyKeyStore(IdempotencyKeyStore idempotencyKeyStore) {
+            this.idempotencyKeyStore = idempotencyKeyStore;
+            return this;
+        }
+
+        public ConsumerBuilder dlqTopic(String dlqTopic) {
+            this.dlqTopic = dlqTopic;
+            return this;
+        }
+
+        public EventConsumer build() {
+            return new EventConsumer(
+                consumerBootstrap, consumerFunction, startupManager, shutdownManager,
+                customProperties, enableIdempotencyCheck, idempotencyKeyStore, dlqTopic
+            );
+        }
     }
 }

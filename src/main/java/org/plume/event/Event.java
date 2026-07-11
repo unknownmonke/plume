@@ -39,9 +39,10 @@ public class Event implements Serializable {
                  Map<?, ?> additionalProperties) {
 
         this.payload = payload;
-        this.metadata = Metadata.builder()
-            .uuid(randomUUID().toString())
-            .correlationId(correlationId)
+        this.metadata = Metadata.with(
+                randomUUID().toString(),
+                correlationId
+            )
             .timestamp(timestamp == null ? Instant.now() : timestamp)
             .type(type)
             .source(source)
@@ -62,9 +63,10 @@ public class Event implements Serializable {
                  Event origin) {
 
         this.payload = payload;
-        this.metadata = Metadata.builder()
-            .uuid(randomUUID().toString())
-            .correlationId(origin.getMetadata().correlationId())
+        this.metadata = Metadata.with(
+                randomUUID().toString(),
+                origin.getMetadata().correlationId()
+            )
             .parentId(origin.getMetadata().uuid())
             .timestamp(timestamp == null ? Instant.now() : timestamp)
             .type(type)

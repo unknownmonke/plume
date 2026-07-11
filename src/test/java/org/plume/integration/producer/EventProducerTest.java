@@ -23,10 +23,14 @@ public class EventProducerTest extends AbstractIT {
 
     @Test
     void producer_should_publish_event() throws ExecutionException, InterruptedException {
-        ProducerBootstrap producerBootstrap = new ProducerBootstrap(
-            kafkaContainer.getBootstrapServers(), "client-producer", new PlainTextSecurity());
 
-        EventProducer eventProducer = new EventProducer(producerBootstrap);
+        ProducerBootstrap producerBootstrap = ProducerBootstrap.with(
+                kafkaContainer.getBootstrapServers(),
+                "client-producer",
+                new PlainTextSecurity()
+            ).build();
+
+        EventProducer eventProducer = EventProducer.with(producerBootstrap).build();
 
         eventProducer.publish(TOPIC, "key", buildTestEvent()).get();
 
@@ -40,8 +44,12 @@ public class EventProducerTest extends AbstractIT {
     void producer_should_handle_duplicates() throws ExecutionException, InterruptedException {
 
         // Create event, producer and DLQ topic.
-        ProducerBootstrap producerBootstrap = new ProducerBootstrap(
-            kafkaContainer.getBootstrapServers(), "client-producer", new PlainTextSecurity());
+        ProducerBootstrap producerBootstrap = ProducerBootstrap.with(
+                kafkaContainer.getBootstrapServers(),
+                "client-producer",
+                new PlainTextSecurity()
+            ).build();
+
         String dlqTopic = getDlqTopic(null, TOPIC);
 
         // Event must be created once to share the same timestamp.
@@ -49,15 +57,12 @@ public class EventProducerTest extends AbstractIT {
 
         createTopic(dlqTopic, 1, (short) 1);
 
-        EventProducer eventProducer = new EventProducer(
-            producerBootstrap,
-            null,
-            null,
-            false,
-            new Base64HashGenerator(),
-            new InMemoryIdempotencyKeyStore(),
-            dlqTopic
-            );
+        EventProducer eventProducer = EventProducer.with(producerBootstrap)
+            .hashGenerator(new Base64HashGenerator())
+            .enableIdempotencyCheck()
+            .idempotencyKeyStore(new InMemoryIdempotencyKeyStore())
+            .dlqTopic(dlqTopic)
+            .build();
 
         // Subscribe to all topics.
         consumer.subscribe(List.of(TOPIC, dlqTopic));

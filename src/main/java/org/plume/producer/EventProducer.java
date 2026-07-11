@@ -1,6 +1,7 @@
 package org.plume.producer;
 
 import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -27,7 +28,7 @@ public class EventProducer {
     private final ProducerBootstrap producerBootstrap;
     private final ShutdownManager shutdownManager;
     private final Map<?, ?> customProperties;
-    private final boolean disableIdempotencyCheck;
+    private final boolean enableIdempotencyCheck;
     private final HashGenerator hashGenerator;
     private final IdempotencyKeyStore idempotencyKeyStore;
     private final String dlqTopic;
@@ -35,18 +36,12 @@ public class EventProducer {
     private ProducerRecordBuilder producerRecordBuilder;
     private KafkaProducer<String, Event> kafkaProducer;
     private InternalEventProducer internalProducer;
-
-
-    // Basic constructor with only required values.
-    public EventProducer(@NonNull ProducerBootstrap producerBootstrap) {
-        this(producerBootstrap,
-            null, null, true, null, null, null);
-    }
-
+    
+    
     public EventProducer(@NonNull ProducerBootstrap producerBootstrap,
                          ShutdownManager shutdownManager,
                          Map<?, ?> customProperties,
-                         boolean disableIdempotencyCheck,
+                         boolean enableIdempotencyCheck,
                          HashGenerator hashGenerator,
                          IdempotencyKeyStore idempotencyKeyStore,
                          String dlqTopic) {
@@ -55,7 +50,7 @@ public class EventProducer {
         this.producerBootstrap = producerBootstrap;
         this.shutdownManager = shutdownManager;
         this.customProperties = customProperties;
-        this.disableIdempotencyCheck = disableIdempotencyCheck;
+        this.enableIdempotencyCheck = enableIdempotencyCheck;
         this.hashGenerator = hashGenerator != null ? hashGenerator : new Base64HashGenerator();
         this.idempotencyKeyStore = maybeSetIdempotencyStore(idempotencyKeyStore);
         this.dlqTopic = dlqTopic;
@@ -63,6 +58,10 @@ public class EventProducer {
         setupProducer();
     }
 
+
+    public static ProducerBuilder with(ProducerBootstrap producerBootstrap) {
+        return new ProducerBuilder(producerBootstrap);
+    }
 
     private void setupProducer() {
         this.producerRecordBuilder = new ProducerRecordBuilder(hashGenerator);
@@ -85,11 +84,12 @@ public class EventProducer {
     }
 
     private InternalEventProducer buildInternalProducer() {
-        ProducerBootstrap internalProducerBootstrap = new ProducerBootstrap(
-            producerBootstrap.getBootstrapServers(),
-            producerBootstrap.getClientId() + "-internal-producer",
-            producerBootstrap.getSecurity()
-        );
+        ProducerBootstrap internalProducerBootstrap = ProducerBootstrap.with(
+                producerBootstrap.getBootstrapServers(),
+                producerBootstrap.getClientId() + "-internal-producer",
+                producerBootstrap.getSecurity()
+            ).build();
+        
         return new InternalEventProducer(internalProducerBootstrap);
     }
 
@@ -108,11 +108,11 @@ public class EventProducer {
 
     private IdempotencyKeyStore maybeSetIdempotencyStore(IdempotencyKeyStore idempotencyKeyStore) {
         if (idempotencyKeyStore == null) {
-            if (!disableIdempotencyCheck) {
+            if (enableIdempotencyCheck) {
                 throw new IllegalStateException(
-                    "IdempotencyKeyStore implementation is required. " +
+                    "Idempotency check is active without an IdempotencyKeyStore implementation. " +
                         "Provide one via idempotencyKeyStore(...) " +
-                        "or explicitly opt-out with disableIdempotencyCheck().");
+                        "or remove enableIdempotencyCheck() for default behavior.");
             }
             log.warn("Producer-side IdempotencyKeyStore feature is explicitly disabled. "
                 + "Duplicate events will not be detected and may be published more than once.");
@@ -168,7 +168,7 @@ public class EventProducer {
     }
 
     private Future<RecordMetadata> publishAndMaybeHandleDuplicate(ProducerRecord<String, Event> producerRecord, Callback callback) {
-        if (!disableIdempotencyCheck) {
+        if (enableIdempotencyCheck) {
             if (isDuplicate(producerRecord)) {
                 return publishToDlq(producerRecord);
             }
@@ -218,5 +218,60 @@ public class EventProducer {
 
         log.info("(Publishing duplicate to DLQ: key={}, topic={})", key, topic);
         return internalProducer.publish(topic, key, ignoredEvent);
+    }
+
+    /* ------------------------------------------------------------------------ */
+
+    /**
+     * Restricted builder for optional arguments only.
+     */
+    @RequiredArgsConstructor
+    public static class ProducerBuilder {
+
+        private final ProducerBootstrap producerBootstrap;
+        private ShutdownManager shutdownManager;
+        private Map<?, ?> customProperties;
+        private boolean enableIdempotencyCheck = false;
+        private HashGenerator hashGenerator;
+        private IdempotencyKeyStore idempotencyKeyStore;
+        private String dlqTopic;
+
+
+        public ProducerBuilder shutdownManager(ShutdownManager shutdownManager) {
+            this.shutdownManager = shutdownManager;
+            return this;
+        }
+
+        public ProducerBuilder customProperties(Map<?, ?> customProperties) {
+            this.customProperties = customProperties;
+            return this;
+        }
+
+        public ProducerBuilder enableIdempotencyCheck() {
+            this.enableIdempotencyCheck = true;
+            return this;
+        }
+
+        public ProducerBuilder hashGenerator(HashGenerator hashGenerator) {
+            this.hashGenerator = hashGenerator;
+            return this;
+        }
+
+        public ProducerBuilder idempotencyKeyStore(IdempotencyKeyStore idempotencyKeyStore) {
+            this.idempotencyKeyStore = idempotencyKeyStore;
+            return this;
+        }
+
+        public ProducerBuilder dlqTopic(String dlqTopic) {
+            this.dlqTopic = dlqTopic;
+            return this;
+        }
+
+        public EventProducer build() {
+            return new EventProducer(
+                producerBootstrap, shutdownManager, customProperties, enableIdempotencyCheck,
+                hashGenerator, idempotencyKeyStore, dlqTopic
+            );
+        }
     }
 }
